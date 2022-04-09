@@ -8,8 +8,9 @@ from tqdm import tqdm
 
 TRAIN_EPOCHS = 1000
 
-im_sz = 1024
-mp_sz = 96
+im_sz = 1920
+mp_sz = 192
+# mp_sz = 96
 
 warp_scale = 0.05
 mult_scale = 0.4
@@ -116,7 +117,7 @@ def produce_warp_maps(origins, targets):
             
             np.save('preds.npy', preds.numpy())
         
-def use_warp_maps(origins, targets, fps, steps):
+def use_warp_maps(origins, targets, fps, steps, index):
     STEPS = steps
     
     preds = np.load('preds.npy')
@@ -143,7 +144,10 @@ def use_warp_maps(origins, targets, fps, steps):
     trg_strength = tf.reverse(org_strength, axis = [0])
  
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video = cv2.VideoWriter('morph/morph.mp4', fourcc, fps, (im_sz, im_sz))
+    if index:
+        video = cv2.VideoWriter('morph/morph_{}.mp4'.format(index), fourcc, fps, (im_sz, im_sz))
+    else:
+        video = cv2.VideoWriter('morph/morph.mp4', fourcc, fps, (im_sz, im_sz))
     img_a = np.zeros((im_sz, im_sz * (STEPS // 10), 3), dtype = np.uint8)
     img_b = np.zeros((im_sz, im_sz * (STEPS // 10), 3), dtype = np.uint8)
     img_a_b = np.zeros((im_sz, im_sz * (STEPS // 10), 3), dtype = np.uint8)
@@ -185,18 +189,19 @@ if __name__ == "__main__":
     parser.add_argument("-w", "--warp_scale", help="Scaler for warping map", default = warp_scale, type=float)
     parser.add_argument("-add_first", "--add_first", help="Should you add or multiply maps first", default = add_first, type=bool)
 
-    parser.add_argument("--fps", help="FPS of the result video", default=45, type=int)
-    parser.add_argument("--steps", help="Total number of frames to generate", default=100, type=int)
+    parser.add_argument("--fps", help="FPS of the result video", default=120, type=int)
+    parser.add_argument("--steps", help="Total number of frames to generate", default=240, type=int)
+    parser.add_argument("-f", "--file", help="batch file", default = None)
 
     args = parser.parse_args()
     
-    if not args.source: 
-        print("No source file provided!")
-        exit()
+    # if not args.source: 
+    #     print("No source file provided!")
+    #     exit()
         
-    if not args.target: 
-        print("No target file provided!")
-        exit()    
+    # if not args.target: 
+    #     print("No target file provided!")
+    #     exit()    
         
     TRAIN_EPOCHS = args.train_epochs
     add_scale = args.add_scale
@@ -204,18 +209,45 @@ if __name__ == "__main__":
     warp_scale = args.warp_scale
     add_first = args.add_first
     
-    dom_a = cv2.imread(args.source, cv2.IMREAD_COLOR)
-    dom_a = cv2.cvtColor(dom_a, cv2.COLOR_BGR2RGB)
-    dom_a = cv2.resize(dom_a, (im_sz, im_sz), interpolation = cv2.INTER_AREA)
-    dom_a = dom_a / 127.5 - 1
+    #multiple files
+    if args.file:
+        print("Opening file list")
+        with open(args.file, 'r') as f:
+            flist = f.readlines()
+            for i, entry in enumerate(flist):
+                args.source, args.target = entry.split('|')
+                args.source = args.source.strip()
+                args.target = args.target.strip()
+                print(f"processing entry {i} {args.source} {args.target}")
+                dom_a = cv2.imread(args.source, cv2.IMREAD_COLOR)
+                dom_a = cv2.cvtColor(dom_a, cv2.COLOR_BGR2RGB)
+                dom_a = cv2.resize(dom_a, (im_sz, im_sz), interpolation = cv2.INTER_AREA)
+                dom_a = dom_a / 127.5 - 1
 
-    dom_b = cv2.imread(args.target, cv2.IMREAD_COLOR)
-    dom_b = cv2.cvtColor(dom_b, cv2.COLOR_BGR2RGB)
-    dom_b = cv2.resize(dom_b, (im_sz, im_sz), interpolation = cv2.INTER_AREA)
-    dom_b = dom_b / 127.5 - 1
+                dom_b = cv2.imread(args.target, cv2.IMREAD_COLOR)
+                dom_b = cv2.cvtColor(dom_b, cv2.COLOR_BGR2RGB)
+                dom_b = cv2.resize(dom_b, (im_sz, im_sz), interpolation = cv2.INTER_AREA)
+                dom_b = dom_b / 127.5 - 1
 
-    origins = dom_a.reshape(1, im_sz, im_sz, 3).astype(np.float32)
-    targets = dom_b.reshape(1, im_sz, im_sz, 3).astype(np.float32)
+                origins = dom_a.reshape(1, im_sz, im_sz, 3).astype(np.float32)
+                targets = dom_b.reshape(1, im_sz, im_sz, 3).astype(np.float32)
 
-    produce_warp_maps(origins, targets)
-    use_warp_maps(origins, targets, args.fps, args.steps)
+                produce_warp_maps(origins, targets)
+                use_warp_maps(origins, targets, args.fps, args.steps, i)
+
+    else:
+        dom_a = cv2.imread(args.source, cv2.IMREAD_COLOR)
+        dom_a = cv2.cvtColor(dom_a, cv2.COLOR_BGR2RGB)
+        dom_a = cv2.resize(dom_a, (im_sz, im_sz), interpolation = cv2.INTER_AREA)
+        dom_a = dom_a / 127.5 - 1
+
+        dom_b = cv2.imread(args.target, cv2.IMREAD_COLOR)
+        dom_b = cv2.cvtColor(dom_b, cv2.COLOR_BGR2RGB)
+        dom_b = cv2.resize(dom_b, (im_sz, im_sz), interpolation = cv2.INTER_AREA)
+        dom_b = dom_b / 127.5 - 1
+
+        origins = dom_a.reshape(1, im_sz, im_sz, 3).astype(np.float32)
+        targets = dom_b.reshape(1, im_sz, im_sz, 3).astype(np.float32)
+
+        produce_warp_maps(origins, targets)
+        use_warp_maps(origins, targets, args.fps, args.steps, None)
